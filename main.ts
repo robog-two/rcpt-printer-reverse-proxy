@@ -1,8 +1,14 @@
-let printSocket: WebSocket | undefined = undefined;
-let uuidReturned: string | undefined = undefined;
+import { brotli } from "jsr:@deno-library/compress";
+import { createClient } from "npm:redis@^4.5";
+
+const openSockets: Array<WebSocket> = [];
+
+const redis = createClient({
+  url: Deno.env.get("REDIS_URL"),
+});
+await redis.connect();
 
 Deno.serve(async (req) => {
-  console.log(printSocket);
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "*",
@@ -14,80 +20,77 @@ Deno.serve(async (req) => {
   }
 
   if (req.headers.get("upgrade") !== "websocket") {
-    if (printSocket) {
-      try {
-        const theJSON = await req.json();
-        if (theJSON && Object.entries(theJSON).length > 0) {
-          theJSON.uuid = self.crypto.randomUUID().toString();
-          console.log(theJSON);
+    try {
+      const theJSON = await req.json();
+      if (theJSON && Object.entries(theJSON).length > 0) {
+        theJSON.uuid = self.crypto.randomUUID();
+        console.log(theJSON);
 
-          printSocket?.send(JSON.stringify(theJSON));
-
-          const now = performance.now();
-          while (performance.now() - now < 3000000) {
-            if (uuidReturned == theJSON.uuid) {
-              return new Response(
-                JSON.stringify({
-                  message: "Your JSON was accepted (guy farting) 🧍‍♂️💨",
-                }),
-                {
-                  headers: {
-                    ...corsHeaders,
-                    "Content-Type": "application/json",
-                  },
-                },
-              );
-            }
-          }
-        } else {
-          throw new Error();
-        }
-      } catch {
-        return new Response(
-          JSON.stringify({
-            message: "Sorry, I'm a picky eater. I only accept JSON! Thanks 😋",
-          }),
-          {
-            status: 400,
-            headers: {
-              ...corsHeaders,
-              "Content-Type": "application/json",
-            },
-          },
+        await redis.set(
+          `toprint:${theJSON.uuid.toString()}`,
+          brotli.compress(JSON.stringify(theJSON))
         );
+
+        openSockets.forEach((sock) => {
+          console.log("Sent to a listening socket.")
+          sock.send(JSON.stringify(theJSON));
+        });
+      } else {
+        throw new Error();
       }
+    } catch {
+      return new Response(
+        JSON.stringify({
+          message: "Sorry, I'm a picky eater. I only accept JSON! Thanks 😋"
+        }),
+        {
+          status: 400,
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
+        }
+      );
     }
 
     return new Response(
       JSON.stringify({
-        message:
-          "Unable to connect to receipt printer 👻 it's probably unplugged, email me",
+        message: "Your JSON was accepted (guy farting) 🧍‍♂️💨",
       }),
       {
-        status: 500,
         headers: {
           ...corsHeaders,
           "Content-Type": "application/json",
         },
-      },
+      }
     );
   }
 
   // WebSocket upgrade
   const { socket, response } = Deno.upgradeWebSocket(req);
 
-  socket.addEventListener("open", () => {
-    if (socket) {
-      return new Response("Not authorized", { status: 401 });
-    } else {
-      printSocket = socket;
-    }
+  socket.addEventListener("open", async () => {
+    openSockets.push(socket);
+    await poll(socket);
   });
 
-  socket.addEventListener("message", (event) => {
+  socket.addEventListener("message", async (event) => {
     const json = JSON.parse(event.data);
-    uuidReturned = json.uuid;
-  });
+    if (json.action == "poll") {
+      poll(socket);
+    } else {
+      await redis.del(`toprint:${json.uuid}`);
+    }
+  })
 
   return response;
 });
+
+async function poll(socket: WebSocket) {
+  const keys = await redis.keys('toprint:*');
+  for (const key of keys) {
+    const value = await redis.get(key);
+    socket.send((await brotli.uncompress(value)).toString());
+    return;
+  }
+}
