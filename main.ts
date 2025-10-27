@@ -1,4 +1,3 @@
-import { brotli } from "jsr:@deno-library/compress";
 import { createClient } from "npm:redis@^4.5";
 
 const openSockets: Array<WebSocket> = [];
@@ -28,7 +27,7 @@ Deno.serve(async (req) => {
 
         await redis.set(
           `toprint:${theJSON.uuid.toString()}`,
-          brotli.compress(JSON.stringify(theJSON))
+          JSON.stringify(theJSON)
         );
 
         openSockets.forEach((sock) => {
@@ -91,7 +90,7 @@ async function poll(socket: WebSocket) {
   const keys = await redis.keys('toprint:*');
   for (const key of keys) {
     const value = await redis.get(key);
-    socket.send((await brotli.uncompress(value)).toString());
+    socket.send(value);
     return;
   }
 }
