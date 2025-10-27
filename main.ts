@@ -1,5 +1,5 @@
-const socket = undefined;
-const uuidReturned = undefined;
+let printSocket: WebSocket | undefined = undefined;
+let uuidReturned: string | undefined = undefined;
 
 Deno.serve(async (req) => {
   const corsHeaders = {
@@ -13,78 +13,79 @@ Deno.serve(async (req) => {
   }
 
   if (req.headers.get("upgrade") !== "websocket") {
-    try {
-      const theJSON = await req.json();
-      if (theJSON && Object.entries(theJSON).length > 0) {
-        theJSON.uuid = self.crypto.randomUUID();
-        console.log(theJSON);
+    if (printSocket) {
+      try {
+        const theJSON = await req.json();
+        if (theJSON && Object.entries(theJSON).length > 0) {
+          theJSON.uuid = self.crypto.randomUUID().toString();
+          console.log(theJSON);
 
-        openSockets.forEach((sock) => {
-          console.log("Sent to a listening socket.");
-          sock.send(JSON.stringify(theJSON));
-        });
+          printSocket?.send(JSON.stringify(theJSON));
 
-        const now = performance.now();
-        while (performance.now() - now < 3000) {
-          if (uuidReturned == theJSON.uuid) {
-            return new Response(
-              JSON.stringify({
-                message: "Your JSON was accepted (guy farting) 🧍‍♂️💨",
-              }),
-              {
-                headers: {
-                  ...corsHeaders,
-                  "Content-Type": "application/json",
+          const now = performance.now();
+          while (performance.now() - now < 3000) {
+            if (uuidReturned == theJSON.uuid) {
+              return new Response(
+                JSON.stringify({
+                  message: "Your JSON was accepted (guy farting) 🧍‍♂️💨",
+                }),
+                {
+                  headers: {
+                    ...corsHeaders,
+                    "Content-Type": "application/json",
+                  },
                 },
-              },
-            );
+              );
+            }
           }
+        } else {
+          throw new Error();
         }
-
+      } catch {
         return new Response(
           JSON.stringify({
-            message: "Unable to connect to receipt printer 👻 it's probably unplugged, email me",
+            message: "Sorry, I'm a picky eater. I only accept JSON! Thanks 😋",
           }),
           {
-            status: 500,
+            status: 400,
             headers: {
               ...corsHeaders,
               "Content-Type": "application/json",
             },
           },
         );
-      } else {
-        throw new Error();
       }
-    } catch {
-      return new Response(
-        JSON.stringify({
-          message: "Sorry, I'm a picky eater. I only accept JSON! Thanks 😋",
-        }),
-        {
-          status: 400,
-          headers: {
-            ...corsHeaders,
-            "Content-Type": "application/json",
-          },
-        },
-      );
     }
+
+    return new Response(
+      JSON.stringify({
+        message:
+          "Unable to connect to receipt printer 👻 it's probably unplugged, email me",
+      }),
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      },
+    );
   }
 
   // WebSocket upgrade
-  const { newSocket, response } = Deno.upgradeWebSocket(req);
+  const { socket, response } = Deno.upgradeWebSocket(req);
 
-  newSocket.addEventListener("open", async () => {
+  socket.addEventListener("open", () => {
     if (socket) {
       return new Response("Not authorized", { status: 401 });
     } else {
-      socket = newSocket;
+      printSocket = socket;
     }
   });
 
-  newSocket.addEventListener("message", async (event) => {
+  socket.addEventListener("message", (event) => {
     const json = JSON.parse(event.data);
+    uuidReturned = json.uuid;
   });
 
   return response;
