@@ -38,10 +38,11 @@ Deno.serve(async (req) => {
       } else {
         throw new Error();
       }
-    } catch {
+    } catch (e) {
+      console.log(e);
       return new Response(
         JSON.stringify({
-          message: "Sorry, I'm a picky eater. I only accept JSON! Thanks 😋"
+          message: "Sorry, I'm a picky eater. I only accept valid JSON! Thanks 😋"
         }),
         {
           status: 400,
