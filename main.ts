@@ -23,7 +23,7 @@ Deno.serve(async (req) => {
           printSocket?.send(JSON.stringify(theJSON));
 
           const now = performance.now();
-          while (performance.now() - now < 3000) {
+          while (performance.now() - now < 3000000) {
             if (uuidReturned == theJSON.uuid) {
               return new Response(
                 JSON.stringify({
