@@ -1,6 +1,5 @@
-const openSockets = [];
-const kv = await Deno.openKv();
-import { brotli } from "jsr:@deno-library/compress";
+const socket = undefined;
+const uuidReturned = undefined;
 
 Deno.serve(async (req) => {
   const corsHeaders = {
@@ -20,24 +19,47 @@ Deno.serve(async (req) => {
         theJSON.uuid = self.crypto.randomUUID();
         console.log(theJSON);
 
-        await kv.set(
-          ["toprint", theJSON.uuid.toString()],
-          await brotli.compress(
-            JSON.stringify(theJSON)
-            )
-            );
-
         openSockets.forEach((sock) => {
-          console.log("Sent to a listening socket.")
+          console.log("Sent to a listening socket.");
           sock.send(JSON.stringify(theJSON));
         });
+
+        const now = performance.now();
+        while (performance.now() - now < 3000) {
+          if (uuidReturned == theJSON.uuid) {
+            return new Response(
+              JSON.stringify({
+                message: "Your JSON was accepted (guy farting) 🧍‍♂️💨",
+              }),
+              {
+                headers: {
+                  ...corsHeaders,
+                  "Content-Type": "application/json",
+                },
+              },
+            );
+          }
+        }
+
+        return new Response(
+          JSON.stringify({
+            message: "Unable to connect to receipt printer 👻 it's probably unplugged, email me",
+          }),
+          {
+            status: 500,
+            headers: {
+              ...corsHeaders,
+              "Content-Type": "application/json",
+            },
+          },
+        );
       } else {
         throw new Error();
       }
     } catch {
       return new Response(
         JSON.stringify({
-          message: "Sorry, I'm a picky eater. I only accept JSON! Thanks 😋"
+          message: "Sorry, I'm a picky eater. I only accept JSON! Thanks 😋",
         }),
         {
           status: 400,
@@ -45,48 +67,25 @@ Deno.serve(async (req) => {
             ...corsHeaders,
             "Content-Type": "application/json",
           },
-        }
+        },
       );
     }
-
-    return new Response(
-      JSON.stringify({
-        message: "Your JSON was accepted (guy farting) 🧍‍♂️💨",
-      }),
-      {
-        headers: {
-          ...corsHeaders,
-          "Content-Type": "application/json",
-        },
-      }
-    );
   }
 
   // WebSocket upgrade
-  const { socket, response } = Deno.upgradeWebSocket(req);
+  const { newSocket, response } = Deno.upgradeWebSocket(req);
 
-  socket.addEventListener("open", async () => {
-    openSockets.push(socket);
-
-    poll(socket);
+  newSocket.addEventListener("open", async () => {
+    if (socket) {
+      return new Response("Not authorized", { status: 401 });
+    } else {
+      socket = newSocket;
+    }
   });
 
-  socket.addEventListener("message", async (event) => {
+  newSocket.addEventListener("message", async (event) => {
     const json = JSON.parse(event.data);
-    if (json.action == "poll") {
-      poll(socket);
-    } else {
-      await kv.delete(["toprint", json.uuid]);
-    }
-  })
+  });
 
   return response;
 });
-
-async function poll(socket) {
-  const printQueue = kv.list({prefix: ["toprint"]});
-  for await (let entry of printQueue) {
-    socket.send((await brotli.uncompress(entry.value)).toString());
-    return;
-  }
-}
