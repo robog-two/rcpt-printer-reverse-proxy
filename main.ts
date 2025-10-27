@@ -2,6 +2,7 @@ let printSocket: WebSocket | undefined = undefined;
 let uuidReturned: string | undefined = undefined;
 
 Deno.serve(async (req) => {
+  console.log(printSocket);
   const corsHeaders = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Headers": "*",
