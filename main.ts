@@ -79,7 +79,18 @@ Deno.serve(async (req) => {
     if (json.action == "poll") {
       poll(socket);
     } else {
-      await redis.del(`toprint:${json.uuid}`);
+      // Mark as printed instead of deleting
+      const key = `toprint:${json.uuid}`;
+      const value = await redis.get(key);
+      
+      if (value) {
+        const data = JSON.parse(value);
+        data.printedAt = new Date().toISOString();
+        
+        // Delete from toprint and move to printed archive
+        await redis.del(key);
+        await redis.set(`printed:${json.uuid}`, JSON.stringify(data));
+      }
     }
   })
 
